@@ -1,3 +1,4 @@
+import os
 import pytz
 import json
 import argparse
@@ -15,6 +16,8 @@ def load_config_from_json(filepath):
     for key, value in config.items():
         if isinstance(value, int):
             exec(f"args.{key.upper()} = {int(value)}")
+        elif isinstance(value, float):
+            exec(f"args.{key.upper()} = {float(value)}")
         else:
             exec(f"args.{key.upper()} = '{value}'")
 
@@ -22,8 +25,10 @@ def load_config_from_json(filepath):
 def load_args():
     global args
     parser = argparse.ArgumentParser(description='Setup the DFS')
-    parser.add_argument('--CONFIG', '-c', type=str,
+    parser.add_argument('--CONFIG', '-f', type=str,
                         required=True, help='Path to the config file')
+    parser.add_argument('--CLEANUP', '-c', type=bool, required=False,
+                        default=False, help='Overwrite existing DFS')
     args = parser.parse_args()
     load_config_from_json(args.CONFIG)
     # print(args)
@@ -48,12 +53,21 @@ def create_namenodes():
     for node_name in [args.PRIMARY_NAMENODE_NAME, args.SECONDARY_NAMENODE_NAME]:
         Path(args.PATH_TO_NAMENODES).joinpath(
             node_name).mkdir(parents=True, exist_ok=True)
-    Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(
-        args.FILE_INFO_FILENAME).touch(exist_ok=True)
-    Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(
-        args.BLOCK_INFO_FILENAME).touch(exist_ok=True)
+
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(
+            args.FILE_INFO_FILENAME), 'w') as f:
+        json.dump(dict(), f)
+
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(
+            args.BLOCK_INFO_FILENAME), 'w') as f:
+        json.dump(dict(), f)
+
     Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(
         args.DATANODE_INFO_FILENAME).touch(exist_ok=True)
+
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(
+            args.FILESYSTEM_INFO_FILENAME), 'w') as f:
+        json.dump(dict(), f)
 
 
 def create_datanodes():
@@ -79,7 +93,9 @@ def create_dfs_setup_config():
 
 load_args()
 
-if check_dfs_exists():
+if args.CLEANUP:
+    os.system("bash clean.sh")
+elif check_dfs_exists():
     print('DFS already exists')
     exit(1)
 

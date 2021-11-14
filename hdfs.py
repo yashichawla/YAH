@@ -1,3 +1,4 @@
+import math
 import json
 import time
 import pytz
@@ -6,8 +7,10 @@ import timeloop
 import datetime
 import argparse
 from pathlib import Path
+from fsplit.filesplit import Filesplit
 
 args = None
+file_splitter = Filesplit()
 TIMED_TASK_LOOP = timeloop.Timeloop()
 IST = pytz.timezone('Asia/Kolkata')
 
@@ -19,6 +22,8 @@ def load_config_from_json(filepath):
     for key, value in config.items():
         if isinstance(value, int):
             exec(f"args.{key.upper()} = {int(value)}")
+        elif isinstance(value, float):
+            exec(f"args.{key.upper()} = {float(value)}")
         else:
             exec(f"args.{key.upper()} = '{value}'")
 
@@ -26,11 +31,25 @@ def load_config_from_json(filepath):
 def load_args():
     global args
     parser = argparse.ArgumentParser(description='Load up the DFS')
-    parser.add_argument('--CONFIG', '-c', type=str,
+    parser.add_argument('--CONFIG', '-f', type=str,
                         required=True, help='Path to the DFS config file')
     args = parser.parse_args()
     load_config_from_json(args.CONFIG)
-    print(args)
+
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(
+            args.FILESYSTEM_INFO_FILENAME), 'r') as f:
+        args.FILESYSTEM = json.load(f)
+
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.DATANODE_INFO_FILENAME), 'r') as f:
+        args.DATANODE_INFO = json.load(f)
+
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.BLOCK_INFO_FILENAME), 'r') as f:
+        args.BLOCK_INFO = json.load(f)
+
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.FILE_INFO_FILENAME), 'r') as f:
+        args.FILE_INFO = json.load(f)
+
+    # print(args)
 
 
 def update_secondary_namenode():
@@ -78,7 +97,7 @@ def create_namenode_checkpoints():
         shutil.copy(filename, destination_path)
 
 
-def update_namenode_datanode_info():
+def update_namenode_datanode_info_local():
     with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.DATANODE_INFO_FILENAME), 'r') as f:
         datanode_info = json.load(f)
 
@@ -96,8 +115,10 @@ def update_namenode_datanode_info():
     with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.DATANODE_INFO_FILENAME), 'w') as f:
         json.dump(datanode_info, f)
 
+    args.DATANODE_INFO = datanode_info
 
-def update_namenode_block_info():
+
+def update_namenode_block_info_local():
     with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.DATANODE_INFO_FILENAME), 'r') as f:
         datanode_info = json.load(f)
 
@@ -111,22 +132,217 @@ def update_namenode_block_info():
     with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.BLOCK_INFO_FILENAME), 'w') as f:
         json.dump(block_info, f)
 
+    args.BLOCK_INFO = block_info
+
+
+def update_namenode_file_info():
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.FILE_INFO_FILENAME), 'w') as f:
+        json.dump(args.FILE_INFO, f)
+
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.FILE_INFO_FILENAME), 'r') as f:
+        args.FILE_INFO = json.load(f)
+
+
+def update_namenode_datanode_info():
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.DATANODE_INFO_FILENAME), 'w') as f:
+        json.dump(args.DATANODE_INFO, f)
+
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.DATANODE_INFO_FILENAME), 'r') as f:
+        args.DATANODE_INFO = json.load(f)
+
+
+def update_namenode_block_info():
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.BLOCK_INFO_FILENAME), 'w') as f:
+        json.dump(args.BLOCK_INFO, f)
+
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.BLOCK_INFO_FILENAME), 'r') as f:
+        args.BLOCK_INFO = json.load(f)
+
+
+def update_namenode_filesystem_info():
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.FILESYSTEM_INFO_FILENAME), 'w') as f:
+        json.dump(args.FILESYSTEM, f)
+
+    with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.FILESYSTEM_INFO_FILENAME), 'r') as f:
+        args.FILESYSTEM = json.load(f)
+
+
+def get_file_block_details(file_path):
+    # print(file_path)
+    file_path = Path(file_path)
+    if file_path.exists() and file_path.is_file():
+        # handle 1024?
+        file_size = file_path.stat().st_size
+        # print(file_size)
+        num_blocks = math.ceil(
+            file_size / (args.BLOCK_SIZE * args.BLOCK_SIZE_UNIT))
+        return num_blocks, file_size
+    else:
+        return None, None
+
+
+def check_path_exists_in_hdfs(path):
+    components = path.split('/')
+    components = list(filter(bool, components))  # A/B/script.py
+    # print(components)
+    current = args.FILESYSTEM
+    # print(args.FILESYSTEM)
+    for index, component in enumerate(components):
+        if component in current:
+            if current[component] is None:  # and component == components[-1]:
+                return True
+            current = current[component]
+        else:
+            return False
+    return True
+
+
+def create_path_in_hdfs(destination_file_path):
+    if not check_path_exists_in_hdfs(destination_file_path):
+        components = destination_file_path.split('/')
+        components = list(filter(bool, components))
+        current = args.FILESYSTEM
+        for component in components:
+            if component not in current:
+                current[component] = dict()
+                current = current[component]
+        return True
+    else:
+        return False
+
+
+def create_file_in_hdfs(destination_file_path):
+    if not check_path_exists_in_hdfs(destination_file_path):
+        components = destination_file_path.split('/')
+        components = list(filter(bool, components))
+        filename = components[-1]
+        current = args.FILESYSTEM
+        for component in components[:-1]:
+            if component not in current:
+                current[component] = dict()
+                current = current[component]
+        current[filename] = None
+        return True
+    else:
+        return False
+
+
+def choose_datanode(mode="least"):
+    if mode == "least":
+        available_datanodes = list(args.DATANODE_INFO.keys())
+        datanode_capacities = list(
+            map(lambda x: len(args.DATANODE_INFO[x]), available_datanodes))
+        datanodes = list(zip(available_datanodes, datanode_capacities))
+        # print(available_datanodes)
+        if not available_datanodes:
+            return None
+        else:
+            datanodes.sort(key=lambda x: x[-1])
+            return datanodes[0][0]
+    else:
+        pass  # TODO
+
+
+def put(source_file_path, destination_file_path):
+    num_blocks, file_size = get_file_block_details(source_file_path)
+    # print(num_blocks, file_size)
+    if num_blocks is None:
+        return False
+    else:
+        check_file_created = create_file_in_hdfs(destination_file_path)
+        # print(check_file_created, args.FILESYSTEM)
+        if check_file_created:
+            Path("./temp").mkdir(parents=True, exist_ok=True)
+
+            file_splitter.split(
+                file=source_file_path,
+                split_size=args.BLOCK_SIZE * args.BLOCK_SIZE_UNIT,
+                output_dir="./temp",
+                newline=True
+            )
+
+            existing_file_ids = list(args.FILE_INFO.keys())
+            if existing_file_ids:
+                existing_file_ids = list(
+                    map(lambda x: int(x[-3:]), existing_file_ids))
+                incremented_id = str(max(existing_file_ids) + 1).zfill(3)
+                new_file_id = f"FILE_{incremented_id}"
+            else:
+                new_file_id = "FILE_000"
+
+            args.FILE_INFO[new_file_id] = {
+                "file_path": destination_file_path,
+                "num_blocks": num_blocks,
+                "file_size": file_size
+            }
+
+            update_namenode_file_info()
+            update_namenode_filesystem_info()
+
+            block_root_path = Path("./temp")
+            block_filename = Path(source_file_path).stem
+            block_suffix = Path(source_file_path).suffix
+            for i in range(1, num_blocks+1):
+                current_block_name = f"{block_filename}_{i}"
+                if block_suffix:
+                    current_block_name += block_suffix
+                # print(current_block_name)
+                current_block_path = block_root_path.joinpath(
+                    current_block_name)
+                # print(current_block_path)
+                destination_block_name = f"{new_file_id}__{i}"
+                for j in range(args.REPLICATION_FACTOR):
+                    datanode_id = choose_datanode()
+                    if datanode_id is None:
+                        print("Memory full")
+                        break
+                    else:
+                        # print(args.PATH_TO_DATANODES,
+                        #   type(args.PATH_TO_DATANODES))
+                        path_to_datanode_block = Path(
+                            args.PATH_TO_DATANODES).joinpath(datanode_id).joinpath(destination_block_name)
+                        # update namenode info
+                        # update file info
+                        shutil.copy(str(current_block_path),
+                                    str(path_to_datanode_block))
+                        if destination_block_name not in args.BLOCK_INFO:
+                            args.BLOCK_INFO[destination_block_name] = list()
+                        args.BLOCK_INFO[destination_block_name].append(
+                            datanode_id)
+                        args.DATANODE_INFO[datanode_id].append(
+                            destination_block_name)
+            shutil.rmtree(block_root_path)
+            update_namenode_block_info()
+            update_namenode_datanode_info()
+            return True
+        else:
+            print("File already exists")
+            return False
+
 
 load_args()
+# args.SYNC_PERIOD in below task loop
 
 
-@ TIMED_TASK_LOOP.job(interval=datetime.timedelta(seconds=5))
+@ TIMED_TASK_LOOP.job(interval=datetime.timedelta(seconds=60))
 def update_namenode():
-    update_namenode_datanode_info()
-    update_namenode_block_info()
+    update_namenode_datanode_info_local()
+    update_namenode_block_info_local()
     update_secondary_namenode()
     create_namenode_checkpoints()
 
 
 TIMED_TASK_LOOP.start()
 
+
+def process_input(_input):
+    components = _input.split()
+    put(components[1], components[2])
+
+
 while True:
-    _input = input(">>> ")
+    _input = input("(hdfs) > ")
     if _input.lower() == "q":
         TIMED_TASK_LOOP.stop()
         exit(0)
+    process_input(_input)
