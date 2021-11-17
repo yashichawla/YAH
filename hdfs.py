@@ -3,6 +3,7 @@ import json
 import time
 import pytz
 import shutil
+import random
 import timeloop
 import datetime
 import argparse
@@ -205,7 +206,7 @@ def create_path_in_hdfs(destination_file_path):
         for component in components:
             if component not in current:
                 current[component] = dict()
-                current = current[component]
+            current = current[component]
         return True
     else:
         return False
@@ -220,7 +221,7 @@ def create_file_in_hdfs(destination_file_path):
         for component in components[:-1]:
             if component not in current:
                 current[component] = dict()
-                current = current[component]
+            current = current[component]
         current[filename] = None
         return True
     else:
@@ -228,22 +229,61 @@ def create_file_in_hdfs(destination_file_path):
 
 
 def choose_datanode(mode="least"):
-    if mode == "least":
-        available_datanodes = list(args.DATANODE_INFO.keys())
-        datanode_capacities = list(
-            map(lambda x: len(args.DATANODE_INFO[x]), available_datanodes))
-        datanodes = list(zip(available_datanodes, datanode_capacities))
-        # print(available_datanodes)
-        if not available_datanodes:
-            return None
-        else:
-            datanodes.sort(key=lambda x: x[-1])
-            return datanodes[0][0]
+    all_datanodes = list(args.DATANODE_INFO.keys())
+    datanode_capacities = list(
+        map(lambda x: len(args.DATANODE_INFO[x]), all_datanodes))
+    datanodes = list(zip(all_datanodes, datanode_capacities))
+    available_datanodes = list(
+        filter(lambda x: x[1] <= args.DATANODE_SIZE, datanodes))
+    if not available_datanodes:
+        return None
     else:
-        pass  # TODO
+        if mode == "least":
+            available_datanodes.sort(key=lambda x: x[1])
+            return available_datanodes[0][0]
+        elif mode == "random":
+            return random.choice(available_datanodes)[0]
+        elif mode == 'hashing':
+            # TODO
+            pass
 
 
-def put(source_file_path, destination_file_path):
+def mkdir(*vargs):
+    path = vargs[0]
+    status = create_path_in_hdfs(path)
+    if status:
+        update_namenode_filesystem_info()
+        return True
+    else:
+        print(f"Error: Directory {path} already exists.")
+        return False
+
+
+def ls(*vargs):
+    path = vargs[0]
+    # check if path exists
+    # if path exists, navigate into path, print keys
+    # else print path not found
+
+
+def rm(*vargs):
+    path = vargs[0]
+
+    # check if path exists
+    # if path exists, navigate into path, del key
+    # else print path not found
+
+
+def rmdir(*vargs):
+    path = vargs[0]
+
+    # check if path exists
+    # if path exists, navigate into path, del key
+    # else print path not found
+
+
+def put(*vargs):
+    source_file_path, destination_file_path = vargs
     num_blocks, file_size = get_file_block_details(source_file_path)
     # print(num_blocks, file_size)
     if num_blocks is None:
@@ -335,9 +375,26 @@ def update_namenode():
 TIMED_TASK_LOOP.start()
 
 
+command_map = {
+    "put": put,
+    # "rm": rm,
+    "mkdir": mkdir,
+    # "rmdir": rmdir,
+    # "ls": ls,
+    # "cat": cat
+}
+
+
 def process_input(_input):
     components = _input.split()
-    put(components[1], components[2])
+    command_string = components[0]
+    _function = command_map.get(command_string)
+    if _function is None:
+        print(
+            f"Invalid command. Valid commands are: {list(command_map.keys())}")
+        return
+    else:
+        _function(*components[1:])
 
 
 while True:

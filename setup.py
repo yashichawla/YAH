@@ -103,3 +103,7 @@ setup_dfs_directories()
 create_namenodes()
 create_datanodes()
 create_dfs_setup_config()
+
+# add try-except to each function call
+# if error caught, print error in X
+# else, print success
