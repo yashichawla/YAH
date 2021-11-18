@@ -169,17 +169,13 @@ def update_namenode_filesystem_info():
 
 
 def get_file_block_details(file_path):
-    # print(file_path)
     file_path = Path(file_path)
     if file_path.exists() and file_path.is_file():
         # handle 1024?
         file_size = file_path.stat().st_size
-        # print(file_size)
-        num_blocks = math.ceil(
-            file_size / (args.BLOCK_SIZE * args.BLOCK_SIZE_UNIT))
-        return num_blocks, file_size
+        return file_size
     else:
-        return None, None
+        return None
 
 
 def check_path_exists_in_hdfs(path):
@@ -271,6 +267,7 @@ def rm(*vargs):
 
     # check if path exists
     # if path exists, navigate into path, del key
+    # delete from file_info also
     # else print path not found
 
 
@@ -282,11 +279,29 @@ def rmdir(*vargs):
     # else print path not found
 
 
+def get_file_id_from_hdfs_file_path(file_path):
+    for file_id in args.FILE_INFO:
+        if args.FILE_INFO[file_id]['file_path'] == file_path:
+            return file_id
+    return None
+
+
+def get_datanode_id_from_block_id(block_id):
+    if block_id in args.BLOCK_INFO:
+        possible_datanodes = args.BLOCK_INFO[block_id]
+        for datanode_id in possible_datanodes:
+            if Path(args.PATH_TO_DATANODES).joinpath(datanode_id).joinpath(block_id).exists():
+                return datanode_id
+        return None
+    else:
+        return None
+
+
 def put(*vargs):
     source_file_path, destination_file_path = vargs
-    num_blocks, file_size = get_file_block_details(source_file_path)
-    # print(num_blocks, file_size)
-    if num_blocks is None:
+    file_size = get_file_block_details(source_file_path)
+    if file_size is None:
+        print(f"Error: {source_file_path} not found")
         return False
     else:
         check_file_created = create_file_in_hdfs(destination_file_path)
@@ -296,10 +311,11 @@ def put(*vargs):
 
             file_splitter.split(
                 file=source_file_path,
-                split_size=args.BLOCK_SIZE * args.BLOCK_SIZE_UNIT,
+                split_size=int(args.BLOCK_SIZE * args.BLOCK_SIZE_UNIT),
                 output_dir="./temp",
                 newline=True
             )
+            num_blocks = len(list(Path("./temp").glob("*"))) - 1
 
             existing_file_ids = list(args.FILE_INFO.keys())
             if existing_file_ids:
@@ -360,6 +376,36 @@ def put(*vargs):
             return False
 
 
+def cat(*vargs):
+    file_path = vargs[0]
+    if check_path_exists_in_hdfs(file_path):
+        file_id = get_file_id_from_hdfs_file_path(file_path)
+        if file_id is None:
+            print("Error: File not found.")
+            return False
+        num_blocks = args.FILE_INFO[file_id]['num_blocks']
+        block_id = [f"{file_id}__{bid}" for bid in range(1, num_blocks+1)]
+        block_paths = dict()
+        for block_id in block_id:
+            datanode_id = get_datanode_id_from_block_id(block_id)
+            block_paths[block_id] = Path(
+                args.PATH_TO_DATANODES).joinpath(datanode_id).joinpath(block_id)
+
+        if None in block_paths.values():
+            print("Error: Missing blocks or file not found.")
+            return False
+        else:
+            block_paths = sorted(block_paths.items(),
+                                 key=lambda x: int(x[0].split('__')[1]))
+            for _, block_path in block_paths:
+                with open(block_path, "r") as f:
+                    print(f.read().strip())
+            return True
+    else:
+        print(f"File {file_path} not found.")
+        return False
+
+
 load_args()
 # args.SYNC_PERIOD in below task loop
 
@@ -381,7 +427,7 @@ command_map = {
     "mkdir": mkdir,
     # "rmdir": rmdir,
     # "ls": ls,
-    # "cat": cat
+    "cat": cat
 }
 
 
