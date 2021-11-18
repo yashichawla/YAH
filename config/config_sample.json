@@ -11,7 +11,7 @@
     "namenode_log_path": "/home/pes1ug19cs592/NAMENODE/NAMENODE_LOG.txt",
     "namenode_checkpoints_path": "/home/pes1ug19cs592/NAMENODE/CHECKPOINTS/",
     "fs_path": "/home/pes1ug19cs592/DFS/FILE_SYSTEM/",
-    "dfs_setup_config": "dfs_setup.json",
+    "dfs_setup_config": "../config/dfs_setup.json",
     "primary_namenode_name": "PRIMARY_NAMENODE",
     "secondary_namenode_name": "SECONDARY_NAMENODE",
     "file_info_filename": "FILE_INFO.json",

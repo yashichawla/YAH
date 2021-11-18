@@ -1,3 +1,4 @@
+import os
 import math
 import json
 import time
@@ -8,12 +9,14 @@ import timeloop
 import datetime
 import argparse
 from pathlib import Path
+from threading import Thread
 from fsplit.filesplit import Filesplit
 
 args = None
 file_splitter = Filesplit()
 TIMED_TASK_LOOP = timeloop.Timeloop()
 IST = pytz.timezone('Asia/Kolkata')
+JOB_OUTPUT = list()
 
 
 def load_config_from_json(filepath):
@@ -51,6 +54,29 @@ def load_args():
         args.FILE_INFO = json.load(f)
 
     # print(args)
+
+
+def run_mapper(mapper_filename, input_filename, index):
+    global JOB_OUTPUT
+    output = os.popen(f'cat {input_filename} | python3 {mapper_filename}')
+    JOB_OUTPUT.append((output.read().strip(), index))
+
+
+def aggregate_and_sort(outputs):
+    output = list()
+    for o in outputs:
+        output.extend(o[0].split('\n'))
+    output.sort()
+    return output
+
+
+def run_reducer(reducer_filename, outputs, output_filename):
+    global JOB_OUTPUT
+    command = f"echo -e '{outputs}' | python3 {reducer_filename}"
+    output = os.popen(command)
+    with open('job_output', 'w') as f:
+        f.write(output.read().strip())
+    put('job_output', output_filename)
 
 
 def update_secondary_namenode():
@@ -406,6 +432,63 @@ def cat(*vargs):
         return False
 
 
+def run(*vargs):
+    global JOB_OUTPUT
+    JOB_OUTPUT = list()
+    JOB_OUTPUT.clear()
+
+    run_parser = argparse.ArgumentParser()
+    run_parser.add_argument(
+        "--input", '-i', help="Input file path", type=str)
+    run_parser.add_argument(
+        "--output", '-o', help="Output file path", type=str)
+    run_parser.add_argument(
+        "--mapper", '-m', help="Mapper file path", type=str)
+    run_parser.add_argument(
+        "--reducer", '-r', help="Reducer file path", type=str)
+    run_args = run_parser.parse_args(vargs)
+
+    input_file_path = run_args.input
+    output_file_path = run_args.output
+    mapper_file_path = run_args.mapper
+    reducer_file_path = run_args.reducer
+
+    if check_path_exists_in_hdfs(input_file_path) and Path(mapper_file_path).exists() and Path(reducer_file_path).exists():
+        file_id = get_file_id_from_hdfs_file_path(input_file_path)
+        if file_id is None:
+            print("Error: File not found.")
+            return False
+        else:
+            num_blocks = args.FILE_INFO[file_id]['num_blocks']
+            block_id = [f"{file_id}__{bid}" for bid in range(1, num_blocks+1)]
+            block_paths = dict()
+            for block_id in block_id:
+                datanode_id = get_datanode_id_from_block_id(block_id)
+                block_paths[block_id] = Path(
+                    args.PATH_TO_DATANODES).joinpath(datanode_id).joinpath(block_id)
+            if None in block_paths.values():
+                print("Error: Missing blocks or file not found.")
+                return False
+            else:
+                current_threads = list()
+                for thread_index, block_path in enumerate(block_paths.values()):
+                    current_thread = Thread(
+                        target=run_mapper, args=(mapper_file_path, block_path, thread_index))
+                    current_thread.start()
+                    current_threads.append(current_thread)
+                for current_thread in current_threads:
+                    current_thread.join()
+                current_threads.clear()
+
+                JOB_OUTPUT = sorted(JOB_OUTPUT, key=lambda x: x[1])
+                JOB_OUTPUT = '\n'.join(aggregate_and_sort(JOB_OUTPUT))
+                run_reducer(reducer_file_path, JOB_OUTPUT, output_file_path)
+    else:
+        # find which file is not found
+        print("Error: File not found.")
+        return False
+
+
 load_args()
 # args.SYNC_PERIOD in below task loop
 
@@ -427,7 +510,8 @@ command_map = {
     "mkdir": mkdir,
     # "rmdir": rmdir,
     # "ls": ls,
-    "cat": cat
+    "cat": cat,
+    "run": run
 }
 
 
