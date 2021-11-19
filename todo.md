@@ -27,6 +27,3 @@ It should verify if the DFS can be loaded, by verifing the paths of the Data Nod
 # Accesing the DFS
 rm
 rmdir
-
-# running the hadoop jobs
-change threads to multiprocessing

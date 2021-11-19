@@ -9,7 +9,6 @@ import timeloop
 import datetime
 import argparse
 import logging
-import pprint
 from pathlib import Path
 from threading import Thread
 from fsplit.filesplit import Filesplit
@@ -19,8 +18,10 @@ args = None
 file_splitter = Filesplit()
 TIMED_TASK_LOOP = timeloop.Timeloop()
 IST = pytz.timezone('Asia/Kolkata')
-JOB_OUTPUT = list()
 logging.getLogger("timeloop").setLevel(logging.CRITICAL)
+
+JOB_MANAGER = Manager()
+SHARED_JOB_OUTPUT = JOB_MANAGER.list()
 
 
 def load_config_from_json(filepath):
@@ -61,9 +62,9 @@ def load_args():
 
 
 def run_mapper(mapper_filename, input_filename, index):
-    global JOB_OUTPUT
+    global SHARED_JOB_OUTPUT
     output = os.popen(f'cat {input_filename} | python3 {mapper_filename}')
-    JOB_OUTPUT.append((output.read().strip(), index))
+    SHARED_JOB_OUTPUT.append((output.read().strip(), index))
 
 
 def aggregate_and_sort(outputs):
@@ -75,12 +76,12 @@ def aggregate_and_sort(outputs):
 
 
 def run_reducer(reducer_filename, outputs, output_filename):
-    global JOB_OUTPUT
     command = f"echo -e '{outputs}' | python3 {reducer_filename}"
     output = os.popen(command)
     with open('job_output', 'w') as f:
         f.write(output.read().strip())
     put('job_output', output_filename)
+    Path('job_output').unlink()
 
 
 def update_secondary_namenode():
@@ -472,9 +473,8 @@ def cat(*vargs):
 
 
 def run(*vargs):
-    global JOB_OUTPUT
-    JOB_OUTPUT = list()
-    JOB_OUTPUT.clear()
+    global SHARED_JOB_OUTPUT
+    SHARED_JOB_OUTPUT[:] = []
 
     run_parser = argparse.ArgumentParser()
     run_parser.add_argument(
@@ -509,19 +509,19 @@ def run(*vargs):
                 print("Error: Missing blocks or file not found.")
                 return False
             else:
-                current_threads = list()
-                for thread_index, block_path in enumerate(block_paths.values()):
-                    current_thread = Thread(
-                        target=run_mapper, args=(mapper_file_path, block_path, thread_index))
-                    current_thread.start()
-                    current_threads.append(current_thread)
-                for current_thread in current_threads:
-                    current_thread.join()
-                current_threads.clear()
+                current_processes = list()
+                for process_index, block_path in enumerate(block_paths.values()):
+                    current_process = Process(
+                        target=run_mapper, args=(mapper_file_path, block_path, process_index))
+                    current_process.start()
+                    current_processes.append(current_process)
+                for current_process in current_processes:
+                    current_process.join()
+                current_processes.clear()
 
-                JOB_OUTPUT = sorted(JOB_OUTPUT, key=lambda x: x[1])
-                JOB_OUTPUT = '\n'.join(aggregate_and_sort(JOB_OUTPUT))
-                run_reducer(reducer_file_path, JOB_OUTPUT, output_file_path)
+                output = sorted(SHARED_JOB_OUTPUT, key=lambda x: x[1])
+                output = '\n'.join(aggregate_and_sort(output))
+                run_reducer(reducer_file_path, output, output_file_path)
     else:
         # find which file is not found
         print("Error: File not found.")
