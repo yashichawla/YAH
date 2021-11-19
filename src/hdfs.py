@@ -8,15 +8,19 @@ import random
 import timeloop
 import datetime
 import argparse
+import logging
+import pprint
 from pathlib import Path
 from threading import Thread
 from fsplit.filesplit import Filesplit
+from multiprocessing import Process, Manager
 
 args = None
 file_splitter = Filesplit()
 TIMED_TASK_LOOP = timeloop.Timeloop()
 IST = pytz.timezone('Asia/Kolkata')
 JOB_OUTPUT = list()
+logging.getLogger("timeloop").setLevel(logging.CRITICAL)
 
 
 def load_config_from_json(filepath):
@@ -282,10 +286,44 @@ def mkdir(*vargs):
 
 
 def ls(*vargs):
-    path = vargs[0]
-    # check if path exists
-    # if path exists, navigate into path, print keys
-    # else print path not found
+    if vargs:
+        path = vargs[0]
+        if path == '.':
+            path = '/'
+    else:
+        path = '/'
+    recursive = False
+    if len(vargs) > 1 and vargs[1].lower() == '-r':
+        recursive = True
+    status = check_path_exists_in_hdfs(path)
+    if status:
+        components = path.split('/')
+        components = list(filter(bool, components))
+        if components:
+            current = args.FILESYSTEM
+            for index, component in enumerate(components):
+                if component in current:
+                    current = current[component]
+            if current is None:
+                print(f"Error: Path {path} is a file, not a directory")
+                return False
+            else:
+                if not recursive:
+                    ls_items = '\n'.join(list(current.keys()))
+                    print(ls_items)
+                else:
+                    print(json.dumps(current, indent=4))
+                return True
+        else:
+            if not recursive:
+                ls_items = '\n'.join(list(args.FILESYSTEM.keys()))
+                print(ls_items)
+            else:
+                print(json.dumps(args.FILESYSTEM, indent=4))
+            return True
+    else:
+        print(f"Error: Path {path} not found.")
+        return False
 
 
 def rm(*vargs):
@@ -302,6 +340,7 @@ def rmdir(*vargs):
 
     # check if path exists
     # if path exists, navigate into path, del key
+    # del from file_info also
     # else print path not found
 
 
@@ -509,7 +548,7 @@ command_map = {
     # "rm": rm,
     "mkdir": mkdir,
     # "rmdir": rmdir,
-    # "ls": ls,
+    "ls": ls,
     "cat": cat,
     "run": run
 }
@@ -520,8 +559,9 @@ def process_input(_input):
     command_string = components[0]
     _function = command_map.get(command_string)
     if _function is None:
+        possible_commands = ', '.join(list(command_map.keys()))
         print(
-            f"Invalid command. Valid commands are: {list(command_map.keys())}")
+            f"Invalid command. Valid commands are: {possible_commands}")
         return
     else:
         _function(*components[1:])
@@ -532,4 +572,7 @@ while True:
     if _input.lower() == "q":
         TIMED_TASK_LOOP.stop()
         exit(0)
-    process_input(_input)
+    try:
+        process_input(_input)
+    except Exception as error_message:
+        print(f"ERROR: {error_message}")
