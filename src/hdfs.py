@@ -1,7 +1,5 @@
 import os
-import math
 import json
-import time
 import pytz
 import shutil
 import random
@@ -10,7 +8,6 @@ import datetime
 import argparse
 import logging
 from pathlib import Path
-from threading import Thread
 from fsplit.filesplit import Filesplit
 from multiprocessing import Process, Manager
 
@@ -44,6 +41,25 @@ def load_args():
                         required=True, help='Path to the DFS config file')
     args = parser.parse_args()
     load_config_from_json(args.CONFIG)
+
+    # TODO
+    # if args.NUM_LOAD == 0:
+    #     print("DFS has been loaded for the first time. Please format using the `format` command")
+    #     _input = None
+    #     while _input != 'format':
+    #         _input = input("(hdfs) > ")
+    #         if _input == 'format':
+    #             format_namenode_datanode()
+    #             break
+    #         else:
+    #             print("Please enter `format` to format the DFS")
+
+    # args.NUM_LOAD += 1
+    # with open(args.CONFIG, "w") as f:
+    #     dfs_setup_config_dict = args.__dict__
+    #     dfs_setup_config_dict["TIMESTAMP"] = str(datetime.datetime.now(IST))
+    #     dfs_setup_config_dict["NUM_LOAD"] = 0
+    #     json.dump(dfs_setup_config_dict, f, indent=4)
 
     with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(
             args.FILESYSTEM_INFO_FILENAME), 'r') as f:
@@ -82,6 +98,91 @@ def run_reducer(reducer_filename, outputs, output_filename):
         f.write(output.read().strip())
     put('job_output', output_filename)
     Path('job_output').unlink()
+
+
+def format_namenode_datanode(*vargs):
+    # TODO
+    namenode_path = Path(args.PATH_TO_NAMENODES)
+    shutil.rmtree(str(Path(namenode_path).joinpath(
+        args.NAMENODE_CHECKPOINTS_PATH)))
+    Path(namenode_path).joinpath(args.NAMENODE_CHECKPOINTS_PATH).mkdir(
+        parents=True, exist_ok=True)
+    Path(namenode_path).joinpath(args.NAMENODE_LOG_PATH).unlink()
+    Path(namenode_path).joinpath(args.NAMENODE_LOG_PATH).touch()
+
+    primary_namenode_path = Path(namenode_path).joinpath(
+        args.PRIMARY_NAMENODE_NAME)
+    with open(primary_namenode_path.joinpath(args.FILE_INFO_FILENAME), 'w') as f:
+        json.dump(dict(), f)
+
+    with open(primary_namenode_path.joinpath(args.BLOCK_INFO_FILENAME), 'w') as f:
+        json.dump(dict(), f)
+
+    datanode_info = dict()
+    for i in range(args.NUM_DATANODES):
+        datanode_info[f"DATANODE{i}"] = list()
+
+        shutil.rmtree(
+            str(Path(args.PATH_TO_DATANODES).joinpath(f"DATANODE{i}")))
+        Path(args.PATH_TO_DATANODES).joinpath(
+            f"DATANODE{i}").mkdir(parents=True, exist_ok=True)
+
+        Path(args.DATANODE_LOG_PATH).joinpath(f"DATANODE{i}_LOG.txt").unlink
+        Path(args.DATANODE_LOG_PATH).joinpath(
+            f"DATANODE{i}_LOG.txt").touch(exist_ok=True)
+
+    with open(primary_namenode_path.joinpath(args.DATANODE_INFO_FILENAME), "w") as f:
+        json.dump(datanode_info, f)
+
+    with open(primary_namenode_path.joinpath(args.FILESYSTEM_INFO_FILENAME), 'w') as f:
+        json.dump(dict(), f)
+
+    args.FILESYSTEM = dict()
+
+    secondary_namenode_path = Path(namenode_path).joinpath(
+        args.SECONDARY_NAMENODE_NAME)
+    shutil.rmtree(str(secondary_namenode_path))
+
+    update_namenode_filesystem_info()
+    update_namenode_block_info_local()
+    update_namenode_datanode_info_local()
+    update_secondary_namenode()
+    create_namenode_checkpoints()
+
+
+def check_namenode_and_metadata_exists():
+    primary_namenode_path = Path(
+        args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME)
+    if primary_namenode_path.exists():
+        return primary_namenode_path.joinpath(args.BLOCK_INFO_FILENAME).exists() and \
+            primary_namenode_path.joinpath(args.DATANODE_INFO_FILENAME).exists() and \
+            primary_namenode_path.joinpath(args.FILE_INFO_FILENAME).exists() and \
+            primary_namenode_path.joinpath(
+                args.FILESYSTEM_INFO_FILENAME).exists()
+    else:
+        return False
+
+
+def check_and_revive_primary_namenode():
+    primary_namenode_path = Path(
+        args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME)
+    if not check_namenode_and_metadata_exists():
+        if not primary_namenode_path.exists():
+            primary_namenode_path.mkdir(parents=True)
+        secondary_namenode_path = Path(
+            args.PATH_TO_NAMENODES).joinpath(args.SECONDARY_NAMENODE_NAME)
+        if secondary_namenode_path.exists():
+            files_in_secondary_namenode = secondary_namenode_path.glob('**/*')
+            files_in_secondary_namenode = list(
+                filter(Path.is_file, files_in_secondary_namenode))
+            for file in files_in_secondary_namenode:
+                destination_path = str(
+                    primary_namenode_path.joinpath(file.name))
+                shutil.copy(str(file), destination_path)
+        else:
+            print(
+                'No Secondary Name Node found to revive Primary Name Node. Please create another DFS.')
+            exit(1)
 
 
 def update_secondary_namenode():
@@ -313,14 +414,16 @@ def ls(*vargs):
                     ls_items = '\n'.join(list(current.keys()))
                     print(ls_items)
                 else:
-                    print(json.dumps(current, indent=4))
+                    if current:
+                        print(json.dumps(current, indent=4))
                 return True
         else:
             if not recursive:
                 ls_items = '\n'.join(list(args.FILESYSTEM.keys()))
                 print(ls_items)
             else:
-                print(json.dumps(args.FILESYSTEM, indent=4))
+                if args.FILESYSTEM:
+                    print(json.dumps(args.FILESYSTEM, indent=4))
             return True
     else:
         print(f"Error: Path {path} not found.")
@@ -329,20 +432,52 @@ def ls(*vargs):
 
 def rm(*vargs):
     path = vargs[0]
-
-    # check if path exists
-    # if path exists, navigate into path, del key
-    # delete from file_info also
-    # else print path not found
+    if check_path_exists_in_hdfs(path):
+        components = path.split('/')
+        components = list(filter(bool, components))
+        current = args.FILESYSTEM
+        for component in components[:-1]:
+            if component in current:
+                current = current[component]
+        if components[-1] in current:
+            if current[components[-1]] is None:
+                del current[components[-1]]
+                update_namenode_filesystem_info()
+                return True
+            else:
+                print(
+                    f"Error: Path {path} is a directory, not a file. Use rmdir instead.")
+        else:
+            print(f"Error: Path {path} not found.")
+            return False
+    else:
+        print(f"Error: Path {path} not found.")
+        return False
 
 
 def rmdir(*vargs):
     path = vargs[0]
-
-    # check if path exists
-    # if path exists, navigate into path, del key
-    # del from file_info also
-    # else print path not found
+    if check_path_exists_in_hdfs(path):
+        components = path.split('/')
+        components = list(filter(bool, components))
+        current = args.FILESYSTEM
+        for component in components[:-1]:
+            if component in current:
+                current = current[component]
+        if components[-1] in current:
+            if not current[components[-1]] is None:
+                del current[components[-1]]
+                update_namenode_filesystem_info()
+                return True
+            else:
+                print(
+                    f"Error: Path {path} is a file, not a directory. Use rm instead.")
+        else:
+            print(f"Error: Path {path} not found.")
+            return False
+    else:
+        print(f"Error: Path {path} not found.")
+        return False
 
 
 def get_file_id_from_hdfs_file_path(file_path):
@@ -417,7 +552,10 @@ def put(*vargs):
                     datanode_id = choose_datanode()
                     if datanode_id is None:
                         print("Memory full")
-                        break
+                        del args.FILE_INFO[new_file_id]
+                        update_namenode_file_info()
+                        update_namenode_filesystem_info()
+                        return
                     else:
                         # print(args.PATH_TO_DATANODES,
                         #   type(args.PATH_TO_DATANODES))
@@ -532,8 +670,9 @@ load_args()
 # args.SYNC_PERIOD in below task loop
 
 
-@ TIMED_TASK_LOOP.job(interval=datetime.timedelta(seconds=60))
+@ TIMED_TASK_LOOP.job(interval=datetime.timedelta(seconds=5))
 def update_namenode():
+    check_and_revive_primary_namenode()
     update_namenode_datanode_info_local()
     update_namenode_block_info_local()
     update_secondary_namenode()
@@ -545,12 +684,13 @@ TIMED_TASK_LOOP.start()
 
 command_map = {
     "put": put,
-    # "rm": rm,
+    "rm": rm,
     "mkdir": mkdir,
-    # "rmdir": rmdir,
+    "rmdir": rmdir,
     "ls": ls,
     "cat": cat,
-    "run": run
+    "run": run,
+    "format": format_namenode_datanode
 }
 
 
@@ -564,7 +704,10 @@ def process_input(_input):
             f"Invalid command. Valid commands are: {possible_commands}")
         return
     else:
-        _function(*components[1:])
+        if len(components) == 1:
+            _function()
+        else:
+            _function(*components[1:])
 
 
 while True:
