@@ -26,7 +26,7 @@ def load_args():
     global args
     parser = argparse.ArgumentParser(description='Setup the DFS')
     parser.add_argument('--CONFIG', '-f', type=str,
-                        required=True, help='Path to the config file')
+                        default="../config/config_sample.json", help='Path to the config file')
     parser.add_argument('--CLEANUP', '-c', type=bool, required=False,
                         default=False, help='Overwrite existing DFS')
     args = parser.parse_args()
@@ -90,11 +90,15 @@ def create_dfs_setup_config():
         json.dump(DFS_SETUP_CONFIG_DICT, f, indent=4)
 
 
+def clean_up():
+    os.system("bash clean.sh")
+
+
 load_args()
 
 if args.CLEANUP:
     print("Overwriting existing DFS setup...")
-    os.system("bash clean.sh")
+    clean_up()
 elif check_dfs_exists():
     print('DFS already exists in location. Try another location or use the -c flag to overwrite.')
     exit(1)
@@ -104,6 +108,7 @@ try:
     setup_dfs_directories()
 except Exception as error_message:
     print(f"Error while setting up DFS directories: {error_message}")
+    clean_up()
     exit(1)
 
 try:
@@ -111,6 +116,7 @@ try:
     create_namenodes()
 except Exception as error_message:
     print(f"Error while setting up Name Nodes")
+    clean_up()
     exit(1)
 
 try:
@@ -118,6 +124,7 @@ try:
     create_datanodes()
 except Exception as error_message:
     print(f"Error while setting up Data Nodes: {error_message}")
+    clean_up()
     exit(1)
 
 
@@ -126,6 +133,7 @@ try:
     create_dfs_setup_config()
 except Exception as error_message:
     print(f"Error while creating Configuration Variables: {error_message}")
+    clean_up()
     exit(1)
 
 print("DFS setup successful!")
