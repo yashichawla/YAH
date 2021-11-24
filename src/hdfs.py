@@ -26,12 +26,16 @@ def load_config_from_json(filepath):
     with open(filepath, 'r') as f:
         config = json.load(f)
     for key, value in config.items():
-        if isinstance(value, int):
-            exec(f"args.{key.upper()} = {int(value)}")
-        elif isinstance(value, float):
-            exec(f"args.{key.upper()} = {float(value)}")
-        else:
-            exec(f"args.{key.upper()} = '{value}'")
+        try:
+            if isinstance(value, int):
+                exec(f"args.{key.upper()} = {int(value)}")
+            elif isinstance(value, float):
+                exec(f"args.{key.upper()} = {float(value)}")
+            else:
+                exec(f"args.{key.upper()} = '{value}'")
+        except:
+            # print(key, value)
+            pass
 
 
 def load_args():
@@ -43,23 +47,39 @@ def load_args():
     load_config_from_json(args.CONFIG)
 
     # TODO
-    # if args.NUM_LOAD == 0:
-    #     print("DFS has been loaded for the first time. Please format using the `format` command")
-    #     _input = None
-    #     while _input != 'format':
-    #         _input = input("(hdfs) > ")
-    #         if _input == 'format':
-    #             format_namenode_datanode()
-    #             break
-    #         else:
-    #             print("Please enter `format` to format the DFS")
+    if args.NUM_LOAD == 0:
+        print("DFS has been loaded for the first time. Please format using the `format` command")
+        _input = None
+        while _input != "format":
+            _input = input("(hdfs) > ")
+            if _input == "format":
+                format_namenode_datanode()
+                break
+            else:
+                print("Please enter `format` to format the DFS")
 
-    # args.NUM_LOAD += 1
-    # with open(args.CONFIG, "w") as f:
-    #     dfs_setup_config_dict = args.__dict__
-    #     dfs_setup_config_dict["TIMESTAMP"] = str(datetime.datetime.now(IST))
-    #     dfs_setup_config_dict["NUM_LOAD"] = 0
-    #     json.dump(dfs_setup_config_dict, f, indent=4)
+    # args.__dict_ is causing issues, need another way to load, update and put. it is getting datanode +namenode in config.
+
+    args.NUM_LOAD += 1
+    with open(args.DFS_SETUP_CONFIG, "w") as f:
+        dfs_setup_config_dict = dict()
+        dfs_setup_config_dict.update(args.__dict__)
+        # dfs_setup_config_dict = args.__dict__
+        try:
+            del dfs_setup_config_dict["FILESYSTEM"]
+        except:
+            pass
+        try:
+            del dfs_setup_config_dict["BLOCK_INFO"]
+        except:
+            pass
+        try:
+            del dfs_setup_config_dict["DATANODE_INFO"]
+        except:
+            pass
+        dfs_setup_config_dict["TIMESTAMP"] = str(datetime.datetime.now(IST))
+        dfs_setup_config_dict["NUM_LOAD"] = args.NUM_LOAD
+        json.dump(dfs_setup_config_dict, f, indent=4)
 
     with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(
             args.FILESYSTEM_INFO_FILENAME), 'r') as f:
@@ -182,7 +202,7 @@ def check_and_revive_primary_namenode():
         else:
             print(
                 'No Secondary Name Node found to revive Primary Name Node. Please create another DFS.')
-            exit(1)
+            exit()
 
 
 def update_secondary_namenode():
@@ -411,16 +431,18 @@ def ls(*vargs):
                 return False
             else:
                 if not recursive:
-                    ls_items = '\n'.join(list(current.keys()))
-                    print(ls_items)
+                    if list(current.keys()):
+                        ls_items = '\n'.join(list(current.keys())).strip()
+                        print(ls_items)
                 else:
                     if current:
                         print(json.dumps(current, indent=4))
                 return True
         else:
             if not recursive:
-                ls_items = '\n'.join(list(args.FILESYSTEM.keys()))
-                print(ls_items)
+                if list(args.FILESYSTEM.keys()):
+                    ls_items = '\n'.join(list(args.FILESYSTEM.keys())).strip()
+                    print(ls_items)
             else:
                 if args.FILESYSTEM:
                     print(json.dumps(args.FILESYSTEM, indent=4))
@@ -443,6 +465,9 @@ def rm(*vargs):
             if current[components[-1]] is None:
                 del current[components[-1]]
                 update_namenode_filesystem_info()
+                file_id = get_file_id_from_hdfs_file_path(path)
+                del args.FILE_INFO[file_id]
+                update_namenode_file_info()
                 return True
             else:
                 print(
@@ -673,6 +698,7 @@ load_args()
 @ TIMED_TASK_LOOP.job(interval=datetime.timedelta(seconds=5))
 def update_namenode():
     check_and_revive_primary_namenode()
+    # check_and_revive_datanodes()
     update_namenode_datanode_info_local()
     update_namenode_block_info_local()
     update_secondary_namenode()
@@ -704,6 +730,8 @@ def process_input(_input):
             f"Invalid command. Valid commands are: {possible_commands}")
         return
     else:
+        check_and_revive_primary_namenode()
+        # check_and_revive_datanodes()
         if len(components) == 1:
             _function()
         else:
