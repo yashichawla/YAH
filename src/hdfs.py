@@ -94,6 +94,10 @@ def load_args():
     with open(Path(args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME).joinpath(args.FILE_INFO_FILENAME), 'r') as f:
         args.FILE_INFO = json.load(f)
 
+    # with open(Path(args.NAMENODE_LOG_PATH), "w") as f:
+    #     f.write(f"")
+    #     f.close()
+
     # print(args)
 
 
@@ -590,6 +594,8 @@ def put(*vargs):
                         # update file info
                         shutil.copy(str(current_block_path),
                                     str(path_to_datanode_block))
+                        log_datenode(
+                            datanode_id, destination_block_name, "put")
                         if destination_block_name not in args.BLOCK_INFO:
                             args.BLOCK_INFO[destination_block_name] = list()
                         args.BLOCK_INFO[destination_block_name].append(
@@ -617,6 +623,7 @@ def cat(*vargs):
         block_paths = dict()
         for block_id in block_id:
             datanode_id = get_datanode_id_from_block_id(block_id)
+            log_datenode(datanode_id, block_id, "cat")
             block_paths[block_id] = Path(
                 args.PATH_TO_DATANODES).joinpath(datanode_id).joinpath(block_id)
 
@@ -691,6 +698,21 @@ def run(*vargs):
         return False
 
 
+def log_datenode(datanode_id, block_id, message):
+    datanode_path = f"{datanode_id}_LOG.txt"
+    date = str(datetime.datetime.now(IST))
+    with open(Path(args.DATANODE_LOG_PATH).joinpath(datanode_path), "a") as f:
+        f.write(f"{date} {message.upper()} {block_id}\n")
+        f.close()
+
+
+def log_namenode(message):
+    date = str(datetime.datetime.now(IST))
+    with open(Path(args.NAMENODE_LOG_PATH), "a") as f:
+        f.write(f"{date} {message.upper()}\n")
+        f.close()
+
+
 load_args()
 # args.SYNC_PERIOD in below task loop
 
@@ -698,6 +720,7 @@ load_args()
 @ TIMED_TASK_LOOP.job(interval=datetime.timedelta(seconds=5))
 def update_namenode():
     check_and_revive_primary_namenode()
+    log_namenode(f"SYNC")
     # check_and_revive_datanodes()
     update_namenode_datanode_info_local()
     update_namenode_block_info_local()
@@ -731,8 +754,10 @@ def process_input(_input):
         return
     else:
         check_and_revive_primary_namenode()
+        log_namenode(components[0])
         # check_and_revive_datanodes()
         if len(components) == 1:
+            # log into namenode
             _function()
         else:
             _function(*components[1:])
