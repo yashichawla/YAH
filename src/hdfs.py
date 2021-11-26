@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 import os
 import json
 import pytz
@@ -41,9 +43,36 @@ def load_args():
     global args
     parser = argparse.ArgumentParser(description='Load up the DFS')
     parser.add_argument('--CONFIG', '-f', type=str,
-                        required=True, help='Path to the DFS config file')
+                        help='Path to the DFS config file')
     args = parser.parse_args()
+
+    if args.CONFIG is None:
+        with open('CONFIG.txt', 'r') as log_file:
+            lines = log_file.read().split('\n')
+            lines = list(filter(bool, lines))
+            try:
+                last_load = lines[-1]
+            except:
+                print("No config file found. Please provide a config file.")
+                exit(1)
+            last_loaded_setup = last_load.split('\t')[-1]
+            args.CONFIG = last_loaded_setup
+            print(f"Using the last loaded setup: {last_loaded_setup}")
+    args.CONFIG = Path(args.CONFIG).absolute()
+
+    if not(Path(args.CONFIG).exists() and Path(args.CONFIG).is_file() and Path(args.CONFIG).suffix == '.json'):
+        print("Configuration file does not exist. Please provide a valid config file.")
+        exit(1)
+
     load_config_from_json(args.CONFIG)
+
+    if not Path(args.PATH_TO_NAMENODES).exists():
+        print("Path to Name Nodes does not exist. Please create the DFS and try again")
+        exit(1)
+
+    if not Path(args.PATH_TO_DATANODES).exists():
+        print("Path to Data Nodes does not exist. Please create the DFS and try again")
+        exit(1)
 
     if args.NUM_LOAD == 0:
         print("DFS has been loaded for the first time. Please format using the `format` command")
@@ -56,6 +85,10 @@ def load_args():
                 print("Please enter `format` to format the DFS")
 
     args.NUM_LOAD += 1
+    with open(args.CONFIG_LOG_PATH, 'a') as f:
+        f.write(
+            f"{datetime.datetime.now(IST)}\t{str(Path(args.DFS_SETUP_CONFIG).absolute())}\n")
+
     with open(args.DFS_SETUP_CONFIG, "w") as f:
         dfs_setup_config_dict = dict()
         dfs_setup_config_dict.update(args.__dict__)
@@ -183,12 +216,15 @@ def check_namenode_and_metadata_exists():
             primary_namenode_path.joinpath(args.DATANODE_INFO_FILENAME).exists() and \
             primary_namenode_path.joinpath(args.FILE_INFO_FILENAME).exists() and \
             primary_namenode_path.joinpath(
-                args.FILESYSTEM_INFO_FILENAME).exists()
+            args.FILESYSTEM_INFO_FILENAME).exists()
     else:
         return False
 
 
 def check_and_revive_primary_namenode():
+    if not Path(args.PATH_TO_NAMENODES).joinpath(args.NAMENODE_LOG_PATH).exists():
+        Path(args.PATH_TO_NAMENODES).joinpath(args.NAMENODE_LOG_PATH).touch()
+
     primary_namenode_path = Path(
         args.PATH_TO_NAMENODES).joinpath(args.PRIMARY_NAMENODE_NAME)
     if not check_namenode_and_metadata_exists():
@@ -466,6 +502,7 @@ def remove_file_from_datanodes(file_id):
     for b_id in block_ids:
         del args.BLOCK_INFO[b_id]
     update_namenode_block_info()
+
     for datanode_id in range(args.NUM_DATANODES):
         datanode_id = f"DATANODE{datanode_id}"
         args.DATANODE_INFO[datanode_id] = [
@@ -473,8 +510,9 @@ def remove_file_from_datanodes(file_id):
         datanode_path = Path(args.PATH_TO_DATANODES).joinpath(datanode_id)
         blocks_in_datanode = list(datanode_path.glob('**/*'))
         for block in blocks_in_datanode:
-            if str(block) in block_ids:
+            if block.parts[-1] in block_ids:
                 block.unlink()
+    # update_namenode_block_info()
     update_namenode_datanode_info()
 
 
@@ -512,17 +550,16 @@ def rmdir(*vargs):
     if check_path_exists_in_hdfs(path):
         components = path.split('/')
         components = list(filter(bool, components))
-        current = args.FILESYSTEM
+        temp_filesystem = dict(args.FILESYSTEM)
+        current = temp_filesystem
         for component in components[:-1]:
             if component in current:
                 current = current[component]
-        # /test1/test2/test3/new.txt components[-1]=test3, current=test2
         if components[-1] in current:
             if not current[components[-1]] is None:
-                # traverse file info, for every file find file path, if it starts with path, then call rm for each of those files.
-                # CANT string comp. Split, components, find sublist in file info.
-                # check sublist of file info path element wise.
+                delete_subdir_files(path)
                 del current[components[-1]]
+                args.FILESYSTEM = temp_filesystem
                 update_namenode_filesystem_info()
                 return True
             else:
@@ -534,6 +571,21 @@ def rmdir(*vargs):
     else:
         print(f"Error: Path {path} not found.")
         return False
+
+
+def delete_subdir_files(dir_delete_path):
+    files_to_delete = list()
+    for file_id in args.FILE_INFO:
+        file_path = args.FILE_INFO[file_id]['file_path']
+        file_path_components = file_path.split('/')
+        file_path_components = list(filter(bool, file_path_components))
+        dir_delete_path_components = dir_delete_path.split('/')
+        dir_delete_path_components = list(
+            filter(bool, dir_delete_path_components))
+        if dir_delete_path_components == file_path_components[:len(dir_delete_path_components)]:
+            files_to_delete.append(file_path)
+    for file_path in files_to_delete:
+        rm(file_path)
 
 
 def get_file_id_from_hdfs_file_path(file_path):
@@ -743,10 +795,9 @@ def log_namenode(message):
 
 
 load_args()
-# args.SYNC_PERIOD in below task loop
 
 
-@ TIMED_TASK_LOOP.job(interval=datetime.timedelta(seconds=60))
+@ TIMED_TASK_LOOP.job(interval=datetime.timedelta(seconds=args.SYNC_PERIOD))
 def update_namenode():
     check_and_revive_primary_namenode()
     log_namenode("SYNC")
