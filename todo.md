@@ -1,4 +1,2 @@
-- job completion failed
-- break down hdfs.py 
 - add format to readme
 - run -o directory in readme
