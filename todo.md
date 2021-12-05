@@ -1,3 +1,7 @@
+- clean.sh
+- job completion
+- break down hdfs.py 
+
 - Handle deleted data nodes using check and revive function - check data node, each datanode, contents of each
 
 - check datanode log folder exist

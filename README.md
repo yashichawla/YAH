@@ -50,7 +50,7 @@ Yet Another Hadoop is a simulation of the Hadoop Distributed File System. It is 
 
 Listed below are the commands that can be run on the distributed file system. **Ensure that all paths used are absolute paths always**.
 
-### `Put`
+### `put`
 
 Move a file to the distributed file system.
 
