@@ -78,7 +78,7 @@ def load_args():
         print("DFS has been loaded for the first time. Please format using the `format` command")
         _input = None
         while _input != "format":
-            _input = input("(hdfs) > ")
+            _input = input("(yah) > ")
             if _input == "format":
                 format_namenode_datanode(quit=False)
             else:
@@ -667,7 +667,7 @@ def put(*vargs):
                             args.PATH_TO_DATANODES).joinpath(datanode_id).joinpath(destination_block_name)
                         shutil.copy(str(current_block_path),
                                     str(path_to_datanode_block))
-                        log_datenode(
+                        log_datanode(
                             datanode_id, destination_block_name, "put")
                         if destination_block_name not in args.BLOCK_INFO:
                             args.BLOCK_INFO[destination_block_name] = list()
@@ -696,7 +696,7 @@ def cat(*vargs):
         block_paths = dict()
         for block_id in block_id:
             datanode_id = get_datanode_id_from_block_id(block_id)
-            log_datenode(datanode_id, block_id, "cat")
+            log_datanode(datanode_id, block_id, "cat")
             block_paths[block_id] = Path(
                 args.PATH_TO_DATANODES).joinpath(datanode_id).joinpath(block_id)
 
@@ -781,7 +781,7 @@ def run(*vargs):
         return True
 
 
-def log_datenode(datanode_id, block_id, message):
+def log_datanode(datanode_id, block_id, message):
     datanode_path = f"{datanode_id}_LOG.txt"
     date = str(datetime.datetime.now(IST))
     with open(Path(args.DATANODE_LOG_PATH).joinpath(datanode_path), "a") as f:
@@ -845,7 +845,7 @@ def process_input(_input):
 
 
 while True:
-    _input = input("(hdfs) > ")
+    _input = input("(yah) > ")
     if _input.lower() == "q":
         TIMED_TASK_LOOP.stop()
         exit(0)

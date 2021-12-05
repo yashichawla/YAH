@@ -1,7 +1,4 @@
-- clean.sh
-- job completion
+- job completion failed
 - break down hdfs.py 
 - add format to readme
 - run -o directory in readme
-- datanode spelled as datenode at one place, check?
-

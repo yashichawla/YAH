@@ -3,6 +3,7 @@
 import os
 import pytz
 import json
+import shutil
 import argparse
 import datetime
 from pathlib import Path
@@ -93,7 +94,9 @@ def create_dfs_setup_config():
 
 
 def clean_up():
-    os.system("bash clean.sh")
+    shutil.rmtree(args.PATH_TO_DATANODES)
+    shutil.rmtree(args.PATH_TO_NAMENODES)
+    Path(args.CONFIG_LOG_PATH).unlink()
 
 
 load_args()
