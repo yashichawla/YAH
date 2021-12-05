@@ -97,11 +97,18 @@ List all the files and folders in a directory in the distributed file system.
 ```bash
 usage: ls DIR_NAME [-r RECURSIVE]
 ```
+### `format`
+
+Formats contents of the namenode and datanode
+
+```bash
+usage: format
+```
 
 ## Running Map-Reduce Jobs
 
 Map-Reduce jobs can be run on the distributed file system via the CLI. The following command can be used to run a map-reduce job.
 
 ```bash
-run -i INPUT_FILE_IN_DFS -o OUTPUT_FILE_IN_DFS -m MAPPER_FILENAME -r REDUCER_FILENAME
+run -i INPUT_FILE_IN_DFS -o OUTPUT_DIRECTORY_IN_DFS -m MAPPER_FILENAME -r REDUCER_FILENAME
 ```
