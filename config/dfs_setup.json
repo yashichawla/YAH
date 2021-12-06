@@ -1,9 +1,9 @@
 {
     "CONFIG": "../config/config_sample.json",
-    "CLEANUP": true,
+    "CLEANUP": 1,
     "BLOCK_SIZE": 2,
     "BLOCK_SIZE_UNIT": 1000.0,
-    "PATH_TO_DATANODES": "/home/pes1ug19cs592/DATANODE/",
+    "PATH_TO_DATANODES": "/home/pes1ug19cs592/DATANODE",
     "PATH_TO_NAMENODES": "/home/pes1ug19cs592/NAMENODE/",
     "REPLICATION_FACTOR": 3,
     "NUM_DATANODES": 5,
@@ -21,6 +21,6 @@
     "BLOCK_INFO_FILENAME": "BLOCK_INFO.json",
     "DATANODE_INFO_FILENAME": "DATANODE_INFO.json",
     "FILESYSTEM_INFO_FILENAME": "FILESYSTEM_INFO.json",
-    "TIMESTAMP": "2021-12-05 16:18:59.509659+05:30",
-    "NUM_LOAD": 0
+    "TIMESTAMP": "2021-12-06 11:03:19.282750+05:30",
+    "NUM_LOAD": 2
 }

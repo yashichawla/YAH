@@ -1,12 +1,11 @@
 {
     "block_size": 2,
     "block_size_unit": 1e3,
-    "path_to_datanodes": "/home/pes1ug19cs592/DATANODE/",
+    "path_to_datanodes": "/home/pes1ug19cs592/DATANODE",
     "path_to_namenodes": "/home/pes1ug19cs592/NAMENODE/",
     "replication_factor": 3,
     "num_datanodes": 5,
     "datanode_size": 100,
-    "sync_period": 60,
     "datanode_log_path": "/home/pes1ug19cs592/DATANODE/DATANODE_LOGS/",
     "namenode_log_path": "/home/pes1ug19cs592/NAMENODE/NAMENODE_LOG.txt",
     "config_log_path": "CONFIG.txt",

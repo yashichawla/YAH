@@ -94,12 +94,44 @@ def create_dfs_setup_config():
 
 
 def clean_up():
-    shutil.rmtree(args.PATH_TO_DATANODES)
-    shutil.rmtree(args.PATH_TO_NAMENODES)
-    Path(args.CONFIG_LOG_PATH).unlink()
+    if Path(args.PATH_TO_DATANODES).exists():
+        shutil.rmtree(args.PATH_TO_DATANODES)
+    if Path(args.PATH_TO_NAMENODES).exists():
+        shutil.rmtree(args.PATH_TO_NAMENODES)
+    if Path(args.CONFIG_LOG_PATH).exists():
+        Path(args.CONFIG_LOG_PATH).unlink()
 
+
+def check_missing_args():
+    configs = [
+        'BLOCK_SIZE', 
+        'BLOCK_SIZE_UNIT', 
+        'PATH_TO_DATANODES', 
+        'PATH_TO_NAMENODES', 
+        'REPLICATION_FACTOR', 
+        'NUM_DATANODES', 
+        'DATANODE_SIZE', 
+        'SYNC_PERIOD', 
+        'DATANODE_LOG_PATH', 
+        'NAMENODE_LOG_PATH', 
+        'CONFIG_LOG_PATH', 
+        'NAMENODE_CHECKPOINTS_PATH', 
+        'FS_PATH', 
+        'DFS_SETUP_CONFIG', 
+        'PRIMARY_NAMENODE_NAME', 
+        'SECONDARY_NAMENODE_NAME', 
+        'FILE_INFO_FILENAME', 
+        'BLOCK_INFO_FILENAME', 
+        'DATANODE_INFO_FILENAME', 
+        'FILESYSTEM_INFO_FILENAME'
+    ]
+    for config in configs:
+        if config not in args.__dict__:
+            print(f"Error: Cannot find the following config: {config}")
+            exit(1)
 
 load_args()
+check_missing_args()
 
 if args.CLEANUP:
     print("Overwriting existing DFS setup...")
