@@ -1,2 +1,0 @@
-- add format to readme
-- run -o directory in readme
